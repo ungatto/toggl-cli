@@ -19,6 +19,7 @@ import iso8601
 import json
 import optparse
 import os
+import errno
 import pytz
 import requests
 import sys
@@ -66,7 +67,7 @@ class Singleton(type):
 #----------------------------------------------------------------------------
 class Config(object):
     """
-    Singleton. toggl configuration data, read from ~/.togglrc.
+    Singleton. toggl configuration data, read from ~/.config/togglrc.
     Properties:
         auth - (username, password) tuple.
     """
@@ -75,16 +76,19 @@ class Config(object):
 
     def __init__(self):
         """
-        Reads configuration data from ~/.togglrc.
+        Reads configuration data from ~/.config/togglrc.
         """
-        self.cfg = ConfigParser.ConfigParser()
-        if self.cfg.read(os.path.expanduser('~/.togglrc')) == []:
-            self._create_empty_config()
-            raise IOError("Missing ~/.togglrc. A default has been created for editing.")
+        config_dir = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+        cfgpath = os.path.join(config_dir, 'togglrc')
 
-    def _create_empty_config(self):
+        self.cfg = ConfigParser.ConfigParser()
+        if self.cfg.read(cfgpath) == []:
+            self._create_empty_config(cfgpath)
+            raise IOError("Missing config file. A default has been created for editing.")
+
+    def _create_empty_config(self, cfgpath):
         """
-        Creates a blank ~/.togglrc.
+        Creates a blank config file.
         """
         cfg = ConfigParser.RawConfigParser()
         cfg.add_section('auth')
@@ -95,9 +99,16 @@ class Config(object):
         cfg.set('options', 'timezone', 'UTC')
         cfg.set('options', 'time_format', '%I:%M%p')
         cfg.set('options', 'prefer_token', 'true')
-        with open(os.path.expanduser('~/.togglrc'), 'w') as cfgfile:
+
+        try:
+            os.makedirs(os.path.dirname(cfgpath), 0o700)
+        except OSError as exception:
+            if exception.errno != errno.EEXIST:
+                raise
+
+        with open(cfgpath, 'w') as cfgfile:
             cfg.write(cfgfile)
-        os.chmod(os.path.expanduser('~/.togglrc'), 0o600)
+        os.chmod(cfgpath, 0o600)
 
     def get(self, section, key):
         """
